@@ -25,6 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { ESTADOS_BR, SITUACAO_CADASTRAL, NATUREZA_JURIDICA, CNAES_COMUNS, REGIOES_BR } from '@/utils/constants';
 import { maskCEP, maskDDD, parseCurrency } from '@/utils/formatters';
 import { formatSearchPayload, searchCompanies } from '@/services/api';
@@ -61,7 +62,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         comEmail: false,
     });
 
-    const [selectedRegion, setSelectedRegion] = useState('');
+    const [selectedRegions, setSelectedRegions] = useState([]); // Changed to array
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -99,24 +100,28 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         handleInputChange('ddd', masked);
     };
 
-    const handleRegionChange = (regionValue) => {
-        setSelectedRegion(regionValue);
+    const handleRegionChange = (newRegions) => {
+        setSelectedRegions(newRegions);
 
-        if (regionValue === 'QUALQUER') {
-            handleInputChange('uf', []);
-        } else {
+        // Calculate UFs based on selected regions
+        const regionUFs = new Set();
+        newRegions.forEach(regionValue => {
+            if (regionValue === 'QUALQUER') return;
             const region = REGIOES_BR.find(r => r.value === regionValue);
             if (region) {
-                handleInputChange('uf', [...region.estados]);
+                region.estados.forEach(uf => regionUFs.add(uf));
             }
-        }
-    };
+        });
 
-    // Helper to get UF Select value
-    const getUFValue = () => {
-        if (formData.uf.length === 0) return 'QUALQUER';
-        if (formData.uf.length === 1) return formData.uf[0];
-        return 'MULTI';
+        // If "QUALQUER" (All Regions) is selected, usually we clear UFs?
+        // Or if user explicitly selects multiple regions, we want the Union of their states.
+        // Let's assume if 'QUALQUER' is in the list or list is empty, we clear (or handle in specific way).
+        // For MultiSelect, 'QUALQUER' might not make sense if we allow picking specific regions.
+        // Let's keep 'QUALQUER' as an option that clears everything else? Or just remove it for Multi?
+        // Let's implement ADDITIVE logic:
+
+        const newUFs = Array.from(regionUFs);
+        handleInputChange('uf', newUFs);
     };
 
     const handleSubmit = async (e) => {
@@ -210,7 +215,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
             somenteCelular: false,
             comEmail: false,
         });
-        setSelectedRegion('');
+        setSelectedRegions([]);
         setError('');
         onSearchResults([], null);
     };
@@ -383,66 +388,42 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                 <div className="space-y-3">
                                     <Label htmlFor="regiao" className="text-base font-semibold flex items-center gap-2 text-white/90">
                                         <MapPin className="h-4 w-4 text-primary" />
-                                        Região
+                                        Regiões
                                     </Label>
-                                    <Select
-                                        value={selectedRegion || "placeholder"}
-                                        onValueChange={handleRegionChange}
-                                    >
-                                        <SelectTrigger className="h-12 bg-black/20 border-white/10 text-white focus:ring-primary/20">
-                                            <SelectValue placeholder="Selecione a região..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="placeholder" disabled>Selecione a região...</SelectItem>
-                                            <SelectItem value="QUALQUER">Todas as Regiões</SelectItem>
-                                            {REGIOES_BR.map((regiao) => (
-                                                <SelectItem key={regiao.value} value={regiao.value}>
-                                                    {regiao.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <MultiSelect
+                                        options={[
+                                            { value: 'QUALQUER', label: 'Todas as Regiões' },
+                                            ...REGIOES_BR
+                                        ]}
+                                        selected={selectedRegions}
+                                        onChange={handleRegionChange}
+                                        placeholder="Selecione as regiões..."
+                                        searchPlaceholder="Buscar região..."
+                                    />
                                 </div>
 
                                 <div className="space-y-3">
                                     <Label htmlFor="uf" className="text-base font-semibold flex items-center gap-2 text-white/90">
                                         <MapPin className="h-4 w-4 text-primary" />
-                                        Estado (UF)
+                                        Estados (UF)
                                     </Label>
-                                    <Select
-                                        value={getUFValue()}
-                                        onValueChange={(value) => {
-                                            if (!value) return; // Prevent empty resets
-                                            if (value === 'QUALQUER') {
+                                    <MultiSelect
+                                        options={[
+                                            { value: 'QUALQUER', label: 'Todos os Estados' },
+                                            ...ESTADOS_BR
+                                        ]}
+                                        selected={formData.uf}
+                                        onChange={(values) => {
+                                            // Handle special "All" case if likely selected
+                                            if (values.includes('QUALQUER')) {
                                                 handleInputChange('uf', []);
-                                                setSelectedRegion('');
-                                            } else if (value !== 'MULTI') {
-                                                handleInputChange('uf', [value]);
-                                                setSelectedRegion(''); // Manual state selection clears region shortcut
+                                                return;
                                             }
+                                            handleInputChange('uf', values);
                                         }}
-                                    >
-                                        <SelectTrigger className="h-12 bg-black/20 border-white/10 text-white focus:ring-primary/20">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="QUALQUER">Qualquer Estado</SelectItem>
-                                            {/* Always render MULTI but hide/disable appropriately to avoid Radix errors */}
-                                            <SelectItem
-                                                value="MULTI"
-                                                className={formData.uf.length > 1 ? "" : "hidden"}
-                                                disabled={formData.uf.length <= 1}
-                                            >
-                                                {formData.uf.length} estados selecionados
-                                            </SelectItem>
-                                            {ESTADOS_BR.map((estado) => (
-                                                <SelectItem key={estado.value} value={estado.value}>
-                                                    {estado.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-
-                                    </Select>
+                                        placeholder="Selecione os estados..."
+                                        searchPlaceholder="Buscar estado..."
+                                    />
                                 </div>
                             </div>
 
