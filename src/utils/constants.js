@@ -53,3 +53,12 @@ export const NATUREZA_JURIDICA = [
 
 // Importar lista completa de CNAEs (600+ códigos)
 export { CNAES_COMPLETOS as CNAES_COMUNS } from './cnaes_completos';
+
+// Regiões brasileiras e seus estados
+export const REGIOES_BR = [
+    { value: 'NORTE', label: 'Norte', estados: ['AC', 'AM', 'AP', 'PA', 'RO', 'RR', 'TO'] },
+    { value: 'NORDESTE', label: 'Nordeste', estados: ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'] },
+    { value: 'CENTRO-OESTE', label: 'Centro-Oeste', estados: ['DF', 'GO', 'MT', 'MS'] },
+    { value: 'SUDESTE', label: 'Sudeste', estados: ['ES', 'MG', 'RJ', 'SP'] },
+    { value: 'SUL', label: 'Sul', estados: ['PR', 'RS', 'SC'] },
+];

@@ -95,8 +95,12 @@ export const formatSearchPayload = (formData) => {
     }
 
     // Localização
-    if (formData.uf && formData.uf.length > 0) {
-        payload.uf = formData.uf.map(u => u.toLowerCase());
+    console.log('🏛️ [PAYLOAD DEBUG] formData.uf:', formData.uf);
+    if (formData.uf && Array.isArray(formData.uf)) {
+        const ufs = formData.uf.filter(u => u && typeof u === 'string' && u.trim() !== '');
+        if (ufs.length > 0) {
+            payload.uf = ufs.map(u => u.toUpperCase());
+        }
     }
     if (formData.municipio) {
         payload.municipio = [formData.municipio.toLowerCase()];
@@ -197,7 +201,8 @@ export const searchCompanies = async (searchData, tipoResultado = 'completo') =>
         // Retorna SEMPRE os dados para o front (mesmo se n8n falhar)
         const empresasCount = response.data?.total || response.data?.cnpjs?.length || 0;
         console.log('✅ Casa dos Dados retornou:', empresasCount, 'empresas');
-        console.log('📊 Payload enviado foi:', JSON.stringify(searchData, null, 2));
+        const ufStatus = searchData.uf ? `[${searchData.uf.length} UFs: ${searchData.uf.join(', ')}]` : '[BRASIL TODO]';
+        console.log(`📊 Payload enviado foi ${ufStatus}:`, JSON.stringify(searchData, null, 2));
         return {
             success: true,
             data: response.data,

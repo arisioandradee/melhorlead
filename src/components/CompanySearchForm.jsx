@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Search,
     X,
@@ -25,7 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { ESTADOS_BR, SITUACAO_CADASTRAL, NATUREZA_JURIDICA, CNAES_COMUNS } from '@/utils/constants';
+import { ESTADOS_BR, SITUACAO_CADASTRAL, NATUREZA_JURIDICA, CNAES_COMUNS, REGIOES_BR } from '@/utils/constants';
 import { maskCEP, maskDDD, parseCurrency } from '@/utils/formatters';
 import { formatSearchPayload, searchCompanies } from '@/services/api';
 import { SmartCNAESearch } from '@/components/SmartCNAESearch';
@@ -61,12 +61,21 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         comEmail: false,
     });
 
+    const [selectedRegion, setSelectedRegion] = useState('');
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
 
+    // Debugging UF changes
+    useEffect(() => {
+        if (formData.uf.length > 0) {
+            console.log('🏛️ [UF DEBUG] formData.uf changed:', formData.uf);
+        }
+    }, [formData.uf]);
+
     // Count active filters
-    React.useEffect(() => {
+    useEffect(() => {
         const count = Object.entries(formData).filter(([key, value]) => {
             if (typeof value === 'boolean') return value;
             if (Array.isArray(value)) return value.length > 0;
@@ -90,6 +99,26 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         handleInputChange('ddd', masked);
     };
 
+    const handleRegionChange = (regionValue) => {
+        setSelectedRegion(regionValue);
+
+        if (regionValue === 'QUALQUER') {
+            handleInputChange('uf', []);
+        } else {
+            const region = REGIOES_BR.find(r => r.value === regionValue);
+            if (region) {
+                handleInputChange('uf', [...region.estados]);
+            }
+        }
+    };
+
+    // Helper to get UF Select value
+    const getUFValue = () => {
+        if (formData.uf.length === 0) return 'QUALQUER';
+        if (formData.uf.length === 1) return formData.uf[0];
+        return 'MULTI';
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -105,8 +134,6 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                 capitalSocialMin: parseCurrency(formData.capitalSocialMin),
                 capitalSocialMax: parseCurrency(formData.capitalSocialMax),
             });
-
-            console.log('📤 Payload sent to API:', JSON.stringify(payload, null, 2));
 
             const result = await searchCompanies(payload);
             console.log('📥 API Result:', result);
@@ -183,6 +210,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
             somenteCelular: false,
             comEmail: false,
         });
+        setSelectedRegion('');
         setError('');
         onSearchResults([], null);
     };
@@ -274,9 +302,9 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                             <div className="space-y-4">
                                 <SmartCNAESearch
                                     onCNAEsSelected={(cnaes) => {
-                                        handleInputChange('cnae', cnaes); // Array de CNAEs
+                                        handleInputChange('cnae', cnaes);
                                     }}
-                                    selectedCNAEs={formData.cnae || []}
+                                    selectedCNAEs={Array.isArray(formData.cnae) ? formData.cnae : (formData.cnae ? [formData.cnae] : [])}
                                 />
                             </div>
 
@@ -332,8 +360,11 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                     id="cnae"
                                     list="cnae-options"
                                     placeholder="Digite o código CNAE (Preferível usar a Busca IA acima)"
-                                    value={formData.cnae}
-                                    onChange={(e) => handleInputChange('cnae', e.target.value)}
+                                    value={Array.isArray(formData.cnae) ? formData.cnae.join(', ') : formData.cnae}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleInputChange('cnae', val.includes(',') ? val.split(',').map(s => s.trim()).filter(Boolean) : val);
+                                    }}
                                     className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
                                 />
                                 <datalist id="cnae-options">
@@ -348,28 +379,74 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
                         {/* Tab 2: Localização */}
                         <TabsContent value="localizacao" className="space-y-6 overflow-visible">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <Label htmlFor="regiao" className="text-base font-semibold flex items-center gap-2 text-white/90">
+                                        <MapPin className="h-4 w-4 text-primary" />
+                                        Região
+                                    </Label>
+                                    <Select
+                                        value={selectedRegion || "placeholder"}
+                                        onValueChange={handleRegionChange}
+                                    >
+                                        <SelectTrigger className="h-12 bg-black/20 border-white/10 text-white focus:ring-primary/20">
+                                            <SelectValue placeholder="Selecione a região..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="placeholder" disabled>Selecione a região...</SelectItem>
+                                            <SelectItem value="QUALQUER">Todas as Regiões</SelectItem>
+                                            {REGIOES_BR.map((regiao) => (
+                                                <SelectItem key={regiao.value} value={regiao.value}>
+                                                    {regiao.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
                                 <div className="space-y-3">
                                     <Label htmlFor="uf" className="text-base font-semibold flex items-center gap-2 text-white/90">
                                         <MapPin className="h-4 w-4 text-primary" />
                                         Estado (UF)
                                     </Label>
                                     <Select
-                                        value={formData.uf[0] || ''}
-                                        onValueChange={(value) => handleInputChange('uf', value ? [value] : [])}
+                                        value={getUFValue()}
+                                        onValueChange={(value) => {
+                                            if (!value) return; // Prevent empty resets
+                                            if (value === 'QUALQUER') {
+                                                handleInputChange('uf', []);
+                                                setSelectedRegion('');
+                                            } else if (value !== 'MULTI') {
+                                                handleInputChange('uf', [value]);
+                                                setSelectedRegion(''); // Manual state selection clears region shortcut
+                                            }
+                                        }}
                                     >
                                         <SelectTrigger className="h-12 bg-black/20 border-white/10 text-white focus:ring-primary/20">
-                                            <SelectValue placeholder="Selecione..." />
+                                            <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value="QUALQUER">Qualquer Estado</SelectItem>
+                                            {/* Always render MULTI but hide/disable appropriately to avoid Radix errors */}
+                                            <SelectItem
+                                                value="MULTI"
+                                                className={formData.uf.length > 1 ? "" : "hidden"}
+                                                disabled={formData.uf.length <= 1}
+                                            >
+                                                {formData.uf.length} estados selecionados
+                                            </SelectItem>
                                             {ESTADOS_BR.map((estado) => (
                                                 <SelectItem key={estado.value} value={estado.value}>
                                                     {estado.label}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
+
                                     </Select>
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                                 <div className="space-y-3">
                                     <Label htmlFor="municipio" className="text-base font-semibold text-white/90">

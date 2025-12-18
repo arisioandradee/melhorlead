@@ -22,6 +22,14 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
         loadOfficialCNAEs();
     }, []);
 
+    // Sincroniza estado interno com prop externa
+    useEffect(() => {
+        if (selectedCNAEs) {
+            const codes = Array.isArray(selectedCNAEs) ? selectedCNAEs : [selectedCNAEs];
+            setSelected(new Set(codes.filter(c => c && typeof c === 'string')));
+        }
+    }, [selectedCNAEs]);
+
     const loadOfficialCNAEs = async () => {
         try {
             console.log('📡 Carregando CNAEs oficiais do IBGE...');
