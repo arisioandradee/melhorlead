@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+.env
+.Dockerfile.swp
+docker-compose.yml
+docker-stack.yml

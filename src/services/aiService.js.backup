@@ -1,0 +1,349 @@
+import Groq from 'groq-sdk';
+
+const groq = new Groq({
+    apiKey: import.meta.env.VITE_GROQ_API_KEY,
+    dangerouslyAllowBrowser: true
+});
+
+// Dicionário de sinônimos EXPANDIDO (60+ termos)
+const SYNONYM_DICT = {
+    // Saúde (expandido)
+    'dentista': ['odontologia', 'odontológica', 'consultório dentário', 'dente', 'dental', 'ortodontia'],
+    'médico': ['consultório médico', 'clínica médica', 'medicina', 'consulta', 'saúde', 'ambulatório'],
+    'fisio': ['fisioterapia', 'fisioterapeuta', 'reabilitação'],
+    'psicólogo': ['psicologia', 'psicanálise', 'terapia', 'psicoterapia'],
+    'nutricionista': ['nutrição', 'nutricional', 'alimentação'],
+    'enfermeiro': ['enfermagem', 'cuidados', 'saúde'],
+    'farmácia': ['drogaria', 'medicamento', 'remédio'],
+    'lab': ['laboratório', 'exame', 'análise', 'clínico'],
+    'clínica': ['consultório', 'ambulatório', 'saúde'],
+
+    // Alimentação (expandido)
+    'padaria': ['panificadora', 'pão', 'confeitaria', 'padeiro', 'panificação'],
+    'lanchonete': ['lanche', 'fast food', 'snack bar', 'lanches'],
+    'restaurante': ['comida', 'refeição', 'gastronomia', 'alimentação', 'restauração'],
+    'bar': ['boteco', 'cervejaria', 'pub', 'bebida', 'bebidas'],
+    'buffet': ['evento', 'festa', 'recepção', 'eventos'],
+    'café': ['cafeteria', 'coffee', 'lanchonete'],
+    'açougue': ['carne', 'açougueiro', 'frigorífico'],
+    'mercado': ['supermercado', 'mercearia', 'minimercado', 'varejo'],
+
+    // Tecnologia (expandido)
+    'dev': ['desenvolvedor', 'programador', 'software', 'ti', 'programação', 'desenvolvimento'],
+    'site': ['website', 'web', 'internet', 'página', 'portal'],
+    'app': ['aplicativo', 'mobile', 'celular', 'aplicação'],
+    'ti': ['tecnologia da informação', 'informática', 'computação', 'tech'],
+    'software': ['programa', 'sistema', 'aplicativo'],
+    'consultoria': ['consultor', 'assessoria', 'serviços'],
+
+    // Comércio (expandido)
+    'loja': ['comércio', 'varejo', 'vendas', 'comercial'],
+    'supermercado': ['mercado', 'mercearia', 'varejo'],
+    'farmácia': ['drogaria'],
+    'boutique': ['vestuário', 'roupa', 'moda', 'roupas'],
+    'livraria': ['livro', 'livros', 'papelaria'],
+    'pet': ['animal', 'animais', 'veterinário', 'ração'],
+
+    // Serviços (expandido)
+    'advogado': ['advocacia', 'jurídico', 'direito', 'lei'],
+    'contador': ['contabilidade', 'contábil', 'contabilista'],
+    'engenheiro': ['engenharia', 'projeto', 'construção'],
+    'arquiteto': ['arquitetura', 'projeto', 'design'],
+    'imobiliária': ['imóvel', 'imóveis', 'corretagem', 'corretor'],
+
+    // Educação (expandido)
+    'escola': ['ensino', 'educação', 'colégio', 'educacional'],
+    'curso': ['treinamento', 'formação', 'aula', 'cursos'],
+    'idioma': ['língua', 'inglês', 'espanhol', 'idiomas'],
+    'academia': ['ginástica', 'fitness', 'musculação'],
+
+    // Indústria
+    'fábrica': ['fabricação', 'indústria', 'manufatura', 'produção'],
+    'oficina': ['mecânica', 'conserto', 'reparo', 'manutenção'],
+
+    // Outros
+    'salão': ['beleza', 'cabelo', 'estética', 'cabeleireiro'],
+    'hotel': ['hotelaria', 'hospedagem', 'pousada'],
+    'transporte': ['frete', 'logística', 'transportadora']
+};
+
+/**
+ * Expande termos de busca com sinônimos
+ */
+function expandWithSynonyms(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const expanded = [term];
+
+    // Adiciona sinônimos se encontrar
+    for (const [key, synonyms] of Object.entries(SYNONYM_DICT)) {
+        if (term.includes(key) || key.includes(term)) {
+            expanded.push(...synonyms);
+        }
+    }
+
+    return [...new Set(expanded)]; // Remove duplicatas
+}
+
+export async function findCNAEsByAI(description, cnaeList) {
+    if (!description || description.length < 2) {
+        return [];
+    }
+
+    try {
+        console.log(`🤖 IA processando: "${description}"`);
+        console.log(`📊 Base de dados: ${cnaeList.length} CNAEs disponíveis`);
+
+        // NOVO: SEM PRÉ-FILTRO LOCAL - IA recebe TODA a base IBGE
+        // Prepara lista completa de CNAEs para IA
+        const cnaeListText = cnaeList
+            .slice(0, 100) // Limita a 100 para não estourar token limit
+            .map(cnae => `${cnae.value || cnae.code} - ${cnae.label || cnae.description}`)
+            .join('\n');
+
+        // Prompt EXTREMAMENTE específico para evitar erros
+        const prompt = `Você é um especialista CERTIFICADO em CNAEs do IBGE brasileiro.
+
+TAREFA: Encontrar os CNAEs CORRETOS para: "${description}"
+
+LISTA DE CNAEs DISPONÍVEIS (base IBGE oficial):
+${cnaeListText}
+
+⚠️ REGRAS CRÍTICAS - LEIA COM ATENÇÃO:
+
+1. **VALIDAÇÃO SEMÂNTICA OBRIGATÓRIA**
+   - Se a descrição é "dentista", você DEVE retornar APENAS CNAEs de ODONTOLOGIA/SAÚDE
+   - Se a descrição é "padaria", você DEVE retornar APENAS CNAEs de PANIFICAÇÃO/ALIMENTOS
+   - NUNCA confunda áreas diferentes (saúde ≠ tecnologia, comércio ≠ serviços)
+
+2. **EXEMPLOS DE VALIDAÇÃO:**
+   ✅ CORRETO: "dentista" → 8630-5/03 ou 8630-5/04 (Odontologia)
+   ❌ ERRADO: "dentista" → 6201-5/01 (Desenvolvimento de software) - ISSO NUNCA PODE ACONTECER!
+   
+   ✅ CORRETO: "padaria" → 4721-1/02 ou 1091-1/01 (Panificação)
+   ❌ ERRADO: "padaria" → 8630-5/XX (Saúde) - ISSO NUNCA PODE ACONTECER!
+
+3. **PRIORIZE ESPECIFICIDADE**
+   - Escolha CNAEs específicos sobre genéricos
+   - Evite CNAEs com "não especificadas anteriormente"
+   - Evite CNAEs com "outras atividades"
+
+4. **CONTEXTO BRASILEIRO**
+   - Para profissionais liberais (médico, dentista, advogado) use códigos da seção "Atividades de..."
+   - Para comércio, diferencie fabricação (Indústria) vs revenda (Comércio)
+
+5. **VERIFICAÇÃO FINAL**
+   Antes de retornar CADA CNAE, faça estas perguntas:
+   - "Este CNAE realmente descreve '${description}'?"
+   - "A categoria deste CNAE (saúde/comércio/tecnologia) faz sentido para '${description}'?"
+   - "Estou 100% certo desta classificação?"
+   
+   Se a resposta for NÃO para qualquer pergunta, NÃO retorne aquele CNAE!
+
+FORMATO DE RESPOSTA (JSON puro, sem markdown):
+[
+  {
+    "code": "1234567",
+    "description": "Descrição completa copiada do CNAE",
+    "confidence": 0.95,
+    "reason": "Explique ESPECIFICAMENTE por que este CNAE é adequado para '${description}'"
+  }
+]
+
+Retorne EXATAMENTE 5 CNAEs ordenados por relevância (confidence 0.0-1.0).
+
+⚠️ IMPORTANTE: Seja EXTREMAMENTE criterioso. É melhor confidence 0.50 do que sugerir CNAE completamente errado!
+⚠️ CRÍTICO: NUNCA misture categorias (ex: saúde com tecnologia)!`;
+
+        // Chamada à IA Groq com Mixtral
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: 'system',
+                    content: `Você é um especialista em CNAEs do IBGE com 20+ anos de experiência em classificação fiscal brasileira.
+
+INSTRUÇÕES CRÍTICAS:
+- SEMPRE valide a CATEGORIA do CNAE (saúde/comércio/tecnologia/etc) contra a descrição do usuário
+- NUNCA sugira CNAEs de uma categoria diferente (ex: tecnologia para profissão de saúde)
+- Priorize CNAEs ESPECÍFICOS sobre genéricos
+- Seja CONSERVADOR: melhor confidence baixo que erro grave de categoria
+- Se não tiver certeza ABSOLUTA, reduza drasticamente o confidence
+
+EXEMPLO DE ERRO GRAVE QUE NUNCA PODE ACONTECER:
+Usuário: "dentista" → Você sugere: "6201-5/01 - Desenvolvimento de software" ❌ INACEITÁVEL!
+
+Você é responsável por classificações precisas que afetam negócios reais e obrigações fiscais.`
+                },
+                {
+                    role: 'user',
+                    content: prompt
+                }
+            ],
+            model: 'mixtral-8x7b-32768',
+            temperature: 0.05, // EXTREMAMENTE baixo para evitar criatividade
+            max_tokens: 1500,
+            top_p: 0.8,
+            presence_penalty: 0.2,
+            frequency_penalty: 0.2
+        });
+
+        const responseText = chatCompletion.choices[0]?.message?.content || '[]';
+
+        // Extrair JSON
+        let jsonText = responseText;
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            jsonText = jsonMatch[0];
+        }
+
+        const aiResults = JSON.parse(jsonText);
+
+        console.log(`✅ IA retornou ${aiResults.length} CNAEs`);
+        console.log('📋 Resultados:', aiResults.map(r => r.code).join(', '));
+
+        // REMOVIDO: Variabilidade (causava inconsistência)
+        // REMOVIDO: Enriquecimento semântico (causava pré-filtro incorreto)
+        // Retorna direto os resultados da IA
+        return aiResults;
+
+    } catch (error) {
+        console.error('❌ Erro ao buscar CNAEs com IA:', error);
+
+        // Fallback: busca simples no código
+        const simpleFallback = cnaeList
+            .filter(cnae => {
+                const desc = (cnae.description || cnae.label || '').toLowerCase();
+                const query = description.toLowerCase();
+                return desc.includes(query);
+            })
+            .slice(0, 5)
+            .map(cnae => ({
+                code: cnae.value || cnae.code,
+                description: cnae.label || cnae.description,
+                confidence: 0.5,
+                reason: 'Fallback: match por palavra-chave'
+            }));
+
+        return simpleFallback.length > 0 ? simpleFallback : [];
+    }
+}
+
+/**
+ * Busca fuzzy local MELHORADA com sinônimos
+ * AGORA MUITO MAIS FLEXÍVEL para encontrar mais resultados
+ */
+function fuzzySearchCNAEs(description, cnaeList, maxResults = 5) {
+    const searchTermsOriginal = description
+        .toLowerCase()
+        .trim()
+        .split(/\s+/)
+        .filter(term => term.length > 1); // MUDOU: aceita palavras com 2+ letras
+
+    if (searchTermsOriginal.length === 0) {
+        return fallbackSearch(description, cnaeList);
+    }
+
+    // Expande com sinônimos
+    const allSearchTerms = [];
+    searchTermsOriginal.forEach(term => {
+        allSearchTerms.push(...expandWithSynonyms(term));
+    });
+
+    const uniqueTerms = [...new Set(allSearchTerms)];
+
+    // Calcula score para cada CNAE (MAIS FLEXÍVEL)
+    const scored = cnaeList.map(cnae => {
+        const label = cnae.label.toLowerCase();
+        const code = cnae.value.toLowerCase();
+        let score = 0;
+
+        uniqueTerms.forEach(term => {
+            // Match exato no texto = score muito alto
+            if (label.includes(term)) {
+                score += 15; // AUMENTOU de 10 para 15
+
+                // Bonus se está no início
+                if (label.startsWith(term)) {
+                    score += 8; // AUMENTOU de 5 para 8
+                }
+
+                // Bonus se é palavra completa
+                const regex = new RegExp(`\\b${term}\\b`);
+                if (regex.test(label)) {
+                    score += 5; // AUMENTOU de 3 para 5
+                }
+            }
+
+            // Match parcial MAIS FLEXÍVEL
+            if (term.length >= 3) {
+                const prefix = term.substring(0, 3);
+                if (label.includes(prefix)) {
+                    score += 4; // AUMENTOU de 2 para 4
+                }
+            }
+
+            // NOVO: Match de 2 letras se termo for curto
+            if (term.length === 2 || term.length === 3) {
+                if (label.includes(term)) {
+                    score += 6;
+                }
+            }
+
+            // NOVO: Match de palavras similares (Levenshtein simplificado)
+            const words = label.split(/[\s\-\/]/);
+            words.forEach(word => {
+                if (word.length > 3 && term.length > 3) {
+                    // Se começam igual (primeiras 3 letras)
+                    if (word.substring(0, 3) === term.substring(0, 3)) {
+                        score += 3;
+                    }
+                }
+            });
+        });
+
+        return {
+            code: cnae.value,
+            description: cnae.label,
+            relevance: Math.min(score * 5, 100), // MUDOU: score * 5 (antes era * 8)
+            rawScore: score
+        };
+    });
+
+    // MUDOU: Aceita scores menores (1+ em vez de só > 0)
+    // Mostra MUITO mais resultados agora
+    return scored
+        .filter(item => item.rawScore >= 1) // Threshold MUITO baixo
+        .sort((a, b) => b.rawScore - a.rawScore)
+        .slice(0, maxResults)
+        .map(({ code, description, relevance }) => ({
+            code,
+            description,
+            relevance,
+            source: 'local'
+        }));
+}
+
+/**
+ * Busca fallback simples
+ */
+function fallbackSearch(description, cnaeList) {
+    const searchTerm = description.toLowerCase().trim();
+
+    return cnaeList
+        .filter(cnae =>
+            cnae.label.toLowerCase().includes(searchTerm)
+        )
+        .slice(0, 5)
+        .map(cnae => ({
+            code: cnae.value,
+            description: cnae.label,
+            relevance: 60,
+            source: 'fallback'
+        }));
+}
+
+/**
+ * Verifica se a IA está configurada (Groq)
+ */
+export function isAIConfigured() {
+    return !!import.meta.env.VITE_GROQ_API_KEY;
+}

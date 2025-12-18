@@ -1,0 +1,244 @@
+import axios from 'axios';
+import { formatDateToAPI } from '../utils/formatters';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.casadosdados.com.br';
+const API_KEY = import.meta.env.VITE_API_KEY;
+const N8N_WEBHOOK = 'https://webhook.dibaisales.com.br/webhook/a5fb2dac-c827-44c8-971d-439b8fe139e3';
+
+// Envia os resultados da API para o webhook do n8n
+const sendToN8nWebhook = async (data) => {
+    try {
+        await axios.post(N8N_WEBHOOK, {
+            timestamp: new Date().toISOString(),
+            totalResults: data.total || 0,
+            companies: data.cnpjs || [],
+            source: 'Casa dos Dados API'
+        });
+        console.log('✅ Dados enviados para n8n webhook com sucesso');
+    } catch (error) {
+        console.error('❌ Erro ao enviar para n8n webhook:', error.message);
+        // Não falha a operação principal se o webhook falhar
+    }
+};
+
+// Formata os dados do formulário para o formato esperado pela API
+export const formatSearchPayload = (formData) => {
+    const payload = {};
+
+    // Busca textual (Razão Social / Nome Fantasia)
+    if (formData.razaoSocial || formData.nomeFantasia) {
+        payload.busca_textual = [{
+            texto: [formData.razaoSocial || formData.nomeFantasia].filter(Boolean),
+            tipo_busca: 'radical',
+            razao_social: !!formData.razaoSocial,
+            nome_fantasia: !!formData.nomeFantasia,
+        }];
+    }
+
+    // CNAE Principal (aceita múltiplos)
+    if (formData.cnae) {
+        console.log('🔍 CNAE DEBUG - Valor bruto recebido:', formData.cnae, 'Tipo:', typeof formData.cnae);
+
+        // Converte para array se for Set ou outro tipo
+        const cnaeArray = Array.isArray(formData.cnae)
+            ? formData.cnae
+            : (formData.cnae instanceof Set ? Array.from(formData.cnae) : [formData.cnae]);
+
+        console.log('🔍 CNAE DEBUG - Após conversão para array:', cnaeArray);
+
+        if (cnaeArray.length > 0) {
+            // Normaliza códigos CNAE para formato aceito pela API
+            const normalized = cnaeArray.map(code => {
+                // Remove formatação SE houver, mas aceita string limpa
+                let clean = String(code).replace(/[^\d]/g, '');
+                console.log(`🔍 CNAE DEBUG - Normalizando "${code}" -> "${clean}"`);
+
+                // IMPORTANTE: Alguns CNAEs podem ter 5 ou 7 dígitos.
+                // Se tiver 7, manda 7. Se tiver menos, faz padStart.
+                if (clean.length > 0) {
+                    const padded = clean.padEnd(7, '0').slice(0, 7);
+                    console.log(`🔍 CNAE DEBUG - Após padding: "${padded}"`);
+                    return padded;
+                }
+                return null;
+            }).filter(Boolean); // Remove nulos
+
+            console.log('🔍 CNAE DEBUG - CNAEs normalizados finais:', normalized);
+
+            // Só adiciona se tiver CNAEs válidos
+            if (normalized.length > 0) {
+                payload.codigo_atividade_principal = normalized;
+                console.log('✅ CNAEs adicionados ao payload:', normalized);
+            } else {
+                console.warn('⚠️ CNAE DEBUG - Nenhum CNAE válido após normalização!');
+            }
+        } else {
+            console.warn('⚠️ CNAE DEBUG - Array de CNAEs vazio!');
+        }
+    } else {
+        console.log('ℹ️ CNAE DEBUG - formData.cnae está vazio/undefined');
+    }
+
+    // Natureza Jurídica
+    if (formData.naturezaJuridica) {
+        payload.codigo_natureza_juridica = [formData.naturezaJuridica];
+    }
+
+    // Situação Cadastral - API espera STRING ("ATIVA"), não número!
+    if (formData.situacaoCadastral) {
+        const situacaoMap = {
+            '1': 'ATIVA', '2': 'INAPTA', '3': 'SUSPENSA', '4': 'NULA', '5': 'BAIXADA',
+            'ATIVA': 'ATIVA'
+        };
+        payload.situacao_cadastral = [situacaoMap[formData.situacaoCadastral] || 'ATIVA'];
+        console.log('📊 Situação:', payload.situacao_cadastral[0]);
+    }
+
+    // Localização
+    if (formData.uf && formData.uf.length > 0) {
+        payload.uf = formData.uf.map(u => u.toLowerCase());
+    }
+    if (formData.municipio) {
+        payload.municipio = [formData.municipio.toLowerCase()];
+    }
+    if (formData.bairro) {
+        payload.bairro = [formData.bairro.toLowerCase()];
+    }
+    if (formData.cep) {
+        payload.cep = [formData.cep.replace(/\D/g, '')];
+    }
+    if (formData.ddd) {
+        payload.ddd = [formData.ddd];
+    }
+
+    // Data de Abertura
+    if (formData.dataAberturaInicio || formData.dataAberturaFim) {
+        payload.data_abertura = {};
+        if (formData.dataAberturaInicio) {
+            payload.data_abertura.inicio = formatDateToAPI(formData.dataAberturaInicio);
+        }
+        if (formData.dataAberturaFim) {
+            payload.data_abertura.fim = formatDateToAPI(formData.dataAberturaFim);
+        }
+    }
+
+    // Capital Social
+    if (formData.capitalSocialMin || formData.capitalSocialMax) {
+        payload.capital_social = {};
+        if (formData.capitalSocialMin) {
+            payload.capital_social.minimo = formData.capitalSocialMin;
+        }
+        if (formData.capitalSocialMax) {
+            payload.capital_social.maximo = formData.capitalSocialMax;
+        }
+    }
+
+    // Filtros adicionais
+    const maisFiltros = {};
+
+    if (formData.somenteMatriz) maisFiltros.somente_matriz = true;
+    if (formData.somenteFilial) maisFiltros.somente_filial = true;
+    if (formData.comEmail) maisFiltros.com_email = true;
+    if (formData.comTelefone) maisFiltros.com_telefone = true;
+    if (formData.somenteFixo) maisFiltros.somente_fixo = true;
+    if (formData.somenteCelular) maisFiltros.somente_celular = true;
+
+    if (Object.keys(maisFiltros).length > 0) {
+        payload.mais_filtros = maisFiltros;
+    }
+
+    // MEI
+    const mei = {};
+    if (formData.somenteMEI) mei.optante = true;
+    if (formData.excluirMEI) mei.excluir_optante = true;
+
+    if (Object.keys(mei).length > 0) {
+        payload.mei = mei;
+    }
+
+    // Limite de resultados
+    payload.limite = formData.limite || 50;
+
+    return payload;
+};
+
+// Busca empresas na API (usando tipo_resultado=completo para obter TODOS os dados)
+export const searchCompanies = async (searchData, tipoResultado = 'completo') => {
+    try {
+        const url = `${API_URL}/v5/cnpj/pesquisa?tipo_resultado=${tipoResultado}`;
+        console.log('🔍 API Request:', {
+            url,
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': API_KEY ? '***' + API_KEY.slice(-10) : 'NOT_SET',
+            },
+            payload: searchData,
+        });
+
+        const response = await axios.post(
+            url,
+            searchData,
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'api-key': API_KEY,
+                },
+            }
+        );
+
+        console.log('🎯 RESPOSTA Casa dos Dados:', JSON.stringify(response.data, null, 2));
+
+        // Envia para n8n em BACKGROUND (não bloqueia)
+        // DESABILITADO: Só envia quando clica em baixar relatório (pedido do usuário)
+        /* sendToN8nWebhook(response.data).catch(err =>
+            console.warn('⚠️ N8n webhook falhou (não crítico):', err.message)
+        ); */
+
+        // Retorna SEMPRE os dados para o front (mesmo se n8n falhar)
+        const empresasCount = response.data?.total || response.data?.cnpjs?.length || 0;
+        console.log('✅ Casa dos Dados retornou:', empresasCount, 'empresas');
+        console.log('📊 Payload enviado foi:', JSON.stringify(searchData, null, 2));
+        return {
+            success: true,
+            data: response.data,
+        };
+    } catch (error) {
+        console.error('❌ Erro na busca:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            config: {
+                url: error.config?.url,
+                method: error.config?.method,
+            },
+        });
+
+        let errorMessage = 'Erro ao buscar empresas';
+
+        if (error.response) {
+            switch (error.response.status) {
+                case 400:
+                    errorMessage = 'Dados inválidos. Verifique os filtros aplicados.';
+                    break;
+                case 401:
+                    errorMessage = 'API key inválida';
+                    break;
+                case 403:
+                    errorMessage = 'Sem saldo para realizar a operação';
+                    break;
+                case 404:
+                    errorMessage = 'Endpoint não encontrado. Verifique a URL da API.';
+                    break;
+                default:
+                    errorMessage = error.response.data?.message || errorMessage;
+            }
+        } else if (error.request) {
+            errorMessage = 'Sem resposta do servidor. Verifique sua conexão.';
+        }
+
+        return {
+            success: false,
+            error: errorMessage,
+        };
+    }
+};
