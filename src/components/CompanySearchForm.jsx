@@ -10,7 +10,9 @@ import {
     Calendar,
     DollarSign,
     TrendingUp,
-    Sparkles
+    Sparkles,
+    Loader2,
+    CheckCircle2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +69,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
+    const [success, setSuccess] = useState(false); // Added success state
 
     // Debugging UF changes
     useEffect(() => {
@@ -112,13 +115,6 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                 region.estados.forEach(uf => regionUFs.add(uf));
             }
         });
-
-        // If "QUALQUER" (All Regions) is selected, usually we clear UFs?
-        // Or if user explicitly selects multiple regions, we want the Union of their states.
-        // Let's assume if 'QUALQUER' is in the list or list is empty, we clear (or handle in specific way).
-        // For MultiSelect, 'QUALQUER' might not make sense if we allow picking specific regions.
-        // Let's keep 'QUALQUER' as an option that clears everything else? Or just remove it for Multi?
-        // Let's implement ADDITIVE logic:
 
         const newUFs = Array.from(regionUFs);
         handleInputChange('uf', newUFs);
@@ -169,6 +165,10 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
                 // Pass both results AND search params to Home
                 onSearchResults(companies, formData);
+
+                // Show success state on button
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 3000);
 
                 // Save to history (quota increment DISABLED)
                 if (user) {
@@ -223,25 +223,25 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
     return (
         <form onSubmit={handleSubmit} className="animate-fade-in-up">
             <Card className="w-full glass border-border/50 shadow-xl shadow-primary/5">
-                {/* Header */}
+                {/* Header Simplified */}
                 <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 via-transparent to-secondary/5 pb-6">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div className="flex items-start gap-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-secondary to-accent shadow-lg glow animate-pulse-glow">
-                                <Search className="h-7 w-7 text-white" />
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 border border-primary/20">
+                                <Search className="h-6 w-6 text-primary" />
                             </div>
                             <div className="flex-1">
-                                <CardTitle className="text-2xl font-bold text-gradient-primary mb-1">
+                                <CardTitle className="text-xl font-semibold text-foreground mb-1">
                                     Busca Avançada
                                 </CardTitle>
                                 <p className="text-sm text-muted-foreground">
-                                    Configure filtros inteligentes para encontrar empresas ideais
+                                    Filtre empresas por múltiplos critérios
                                 </p>
                                 {activeFiltersCount > 0 && (
                                     <div className="flex items-center gap-2 mt-2">
-                                        <span className="inline-flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                                         <span className="text-xs text-primary font-medium">
-                                            {activeFiltersCount} filtro{activeFiltersCount > 1 ? 's' : ''} ativo{activeFiltersCount > 1 ? 's' : ''}
+                                            {activeFiltersCount} filtros ativos
                                         </span>
                                     </div>
                                 )}
@@ -251,23 +251,28 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                         <div className="flex gap-2">
                             <Button
                                 type="button"
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
                                 onClick={handleClear}
-                                className="gap-2 h-10 border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all duration-300"
+                                className="gap-2 h-10 text-muted-foreground hover:text-white hover:bg-white/5 data-[state=open]:bg-transparent"
                             >
                                 <X className="h-4 w-4" />
                                 Limpar
                             </Button>
                             <Button
                                 type="submit"
-                                disabled={loading || activeFiltersCount === 0}
-                                className="gap-2 h-10 min-w-[120px] bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:scale-105 active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                disabled={loading || activeFiltersCount === 0 || success}
+                                className={`min-w-[140px] gap-2 font-medium transition-all duration-300 ${success ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
                             >
                                 {loading ? (
                                     <>
-                                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                                        <Loader2 className="h-4 w-4 animate-spin" />
                                         Buscando...
+                                    </>
+                                ) : success ? (
+                                    <>
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        Concluído!
                                     </>
                                 ) : (
                                     <>
@@ -279,6 +284,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                         </div>
                     </div>
                 </CardHeader>
+                {/* ... Rest of form ... */}
 
                 <CardContent className="p-6">
                     <Tabs defaultValue="basico" className="w-full">
