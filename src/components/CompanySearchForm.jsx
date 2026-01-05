@@ -529,7 +529,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                         id="limite"
                                         type="number"
                                         min="1"
-                                        max="300"
+                                        max="100000"
                                         value={formData.limite}
                                         onChange={(e) => handleInputChange('limite', parseInt(e.target.value))}
                                         className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
