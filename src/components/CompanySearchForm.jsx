@@ -70,6 +70,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
     const [loading, setLoading] = useState(false);
     const [fetchProgress, setFetchProgress] = useState(null);
+    const [userQuota, setUserQuota] = useState(null);
     const [error, setError] = useState('');
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
     const [success, setSuccess] = useState(false); // Added success state
@@ -81,6 +82,22 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         }
     }, [formData.uf]);
 
+    // Fetch user quota on mount
+    useEffect(() => {
+        if (user) {
+            fetchQuota();
+        }
+    }, [user]);
+
+    const fetchQuota = async () => {
+        try {
+            const quota = await checkAndResetQuota(user.id);
+            setUserQuota(quota);
+        } catch (err) {
+            console.error('Error fetching quota:', err);
+        }
+    };
+
     // Count active filters
     useEffect(() => {
         const count = Object.entries(formData).filter(([key, value]) => {
@@ -91,6 +108,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         }).length;
         setActiveFiltersCount(count);
     }, [formData]);
+
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -135,27 +153,51 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setSuccess(false);
+
+        if (!user) {
+            setError('Você precisa estar logado para realizar buscas.');
+            return;
+        }
+
         setLoading(true);
         setFetchProgress(null);
-        console.log('🚀 Search started! FormData:', formData);
-        onSearchStart?.();
+        const startTime = performance.now(); // Definindo o início da execução
 
-        const startTime = performance.now();
-
+        // 1. Verificar Quota antes de começar
         try {
+            const quota = await checkAndResetQuota(user.id);
+            if (!quota.allowed || quota.remaining <= 0) {
+                setError(`Seu saldo de CNPJs acabou (${quota.total - quota.remaining}/${quota.total}). Seu plano é: ${user.plan || 'Demo'}.`);
+                setLoading(false);
+                return;
+            }
+
+            // Aplicar Teto da Quota (Cap)
+            let requestedAmount = formData.fetchAll ? 200000 : (formData.totalDesired || 0);
+
+            if (requestedAmount > quota.remaining) {
+                console.warn(`⚠️ Busca limitada pelo saldo disponível: ${quota.remaining} CNPJs`);
+                requestedAmount = quota.remaining;
+                // Opcional: Avisar usuário que a busca foi limitada
+                setError(`Sua busca foi limitada aos ${quota.remaining} CNPJs disponíveis no seu saldo.`);
+            }
+
+            console.log('📊 Quota Check:', quota, 'Requested:', requestedAmount);
+
             const payload = formatSearchPayload({
                 ...formData,
-                limite: formData.totalDesired, // Usar totalDesired como base para o limite
+                limite: requestedAmount,
                 capitalSocialMin: parseCurrency(formData.capitalSocialMin),
                 capitalSocialMax: parseCurrency(formData.capitalSocialMax),
             });
 
             let result;
-            if (formData.totalDesired > 1000 || formData.fetchAll) {
+            if (requestedAmount > 1000) {
                 // Usar paginação
                 result = await searchCompaniesWithPagination(
                     payload,
-                    formData.fetchAll ? 200000 : formData.totalDesired,
+                    requestedAmount,
                     handleProgressUpdate
                 );
             } else {
@@ -194,16 +236,22 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
                 // Show success state on button
                 setSuccess(true);
+
+                // Save to history and increment quota
+                if (user) {
+                    try {
+                        await saveSearch(user.id, formData, companies.length, executionTime);
+                        await incrementSearchCount(user.id, companies.length); // Agora desconta por CNPJ
+                        await fetchQuota(); // Refresh quota after increment
+                    } catch (quotaErr) {
+                        console.error('⚠️ Erro ao processar quota/histórico:', quotaErr);
+                    }
+                }
+
                 setTimeout(() => {
                     setSuccess(false);
                     setFetchProgress(null);
                 }, 3000);
-
-                // Save to history (quota increment DISABLED)
-                if (user) {
-                    await saveSearch(user.id, formData, companies.length, executionTime);
-                    // await incrementSearchCount(user.id); // DISABLED - no quota limits
-                }
             } else {
                 console.error('❌ Search failed:', result.error);
                 setError(result.error);
@@ -265,9 +313,19 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                 <CardTitle className="text-xl font-semibold text-foreground mb-1">
                                     Busca Avançada
                                 </CardTitle>
-                                <p className="text-sm text-muted-foreground">
-                                    Filtre empresas por múltiplos critérios
-                                </p>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                    <p className="text-sm text-muted-foreground">
+                                        Filtre empresas por múltiplos critérios
+                                    </p>
+                                    {userQuota && (
+                                        <div className="flex items-center gap-2 bg-primary/5 px-2 py-0.5 rounded-full border border-primary/10">
+                                            <div className={`h-1.5 w-1.5 rounded-full ${userQuota.remaining > 0 ? 'bg-emerald-500' : 'bg-destructive'}`} />
+                                            <span className="text-[10px] font-medium text-primary">
+                                                Saldo: {userQuota.remaining} CNPJs
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                                 {activeFiltersCount > 0 && (
                                     <div className="flex items-center gap-2 mt-2">
                                         <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
@@ -392,30 +450,49 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                 </div>
                             </div>
 
-                            {/* Manual CNAE Input */}
-                            <div className="space-y-3">
-                                <Label htmlFor="cnae" className="text-base font-semibold flex items-center gap-2 text-white/90">
-                                    <Filter className="h-4 w-4 text-primary" />
-                                    Código CNAE (Manual)
-                                </Label>
-                                <Input
-                                    id="cnae"
-                                    list="cnae-options"
-                                    placeholder="Digite o código CNAE (Preferível usar a Busca IA acima)"
-                                    value={Array.isArray(formData.cnae) ? formData.cnae.join(', ') : formData.cnae}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        handleInputChange('cnae', val.includes(',') ? val.split(',').map(s => s.trim()).filter(Boolean) : val);
-                                    }}
-                                    className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
-                                />
-                                <datalist id="cnae-options">
-                                    {CNAES_COMUNS.map((item) => (
-                                        <option key={item.value} value={item.value}>
-                                            {item.label}
-                                        </option>
-                                    ))}
-                                </datalist>
+                            {/* CNAE Manual + Quantidade */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <Label htmlFor="cnae" className="text-base font-semibold flex items-center gap-2 text-white/90">
+                                        <Filter className="h-4 w-4 text-primary" />
+                                        Código CNAE (Manual)
+                                    </Label>
+                                    <Input
+                                        id="cnae"
+                                        list="cnae-options"
+                                        placeholder="Digite o código CNAE"
+                                        value={Array.isArray(formData.cnae) ? formData.cnae.join(', ') : formData.cnae}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            handleInputChange('cnae', val.includes(',') ? val.split(',').map(s => s.trim()).filter(Boolean) : val);
+                                        }}
+                                        className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
+                                    />
+                                    <datalist id="cnae-options">
+                                        {CNAES_COMUNS.map((item) => (
+                                            <option key={item.value} value={item.value}>
+                                                {item.label}
+                                            </option>
+                                        ))}
+                                    </datalist>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label htmlFor="totalDesired" className="text-base font-semibold flex items-center gap-2 text-white/90">
+                                        <TrendingUp className="h-4 w-4 text-primary" />
+                                        Quantidade de Resultados
+                                    </Label>
+                                    <Input
+                                        id="totalDesired"
+                                        type="number"
+                                        min="1"
+                                        max="200000"
+                                        value={formData.totalDesired}
+                                        onChange={(e) => handleInputChange('totalDesired', parseInt(e.target.value) || 0)}
+                                        disabled={formData.fetchAll}
+                                        className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all disabled:opacity-50"
+                                    />
+                                </div>
                             </div>
                         </TabsContent>
 
@@ -549,36 +626,6 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <Label className="text-base font-semibold flex items-center justify-between text-white/90">
-                                        <div className="flex items-center gap-2">
-                                            <Filter className="h-4 w-4 text-primary" />
-                                            Quantidade de Resultados
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Switch
-                                                id="fetchAll"
-                                                checked={formData.fetchAll}
-                                                onCheckedChange={(checked) => {
-                                                    handleInputChange('fetchAll', checked);
-                                                    if (checked) handleInputChange('totalDesired', 200000);
-                                                }}
-                                            />
-                                            <span className="text-xs font-normal text-muted-foreground">Buscar TODOS</span>
-                                        </div>
-                                    </Label>
-                                    <Input
-                                        id="totalDesired"
-                                        type="number"
-                                        min="1"
-                                        max="200000"
-                                        value={formData.totalDesired}
-                                        onChange={(e) => handleInputChange('totalDesired', parseInt(e.target.value) || 0)}
-                                        disabled={formData.fetchAll}
-                                        className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all disabled:opacity-50"
-                                    />
                                 </div>
                             </div>
 

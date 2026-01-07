@@ -136,29 +136,55 @@ export async function checkAndResetQuota(userId) {
 /**
  * Incrementa contador de buscas
  */
-export async function incrementSearchCount(userId) {
+export async function incrementSearchCount(userId, count = 1) {
+    console.log(`🔄 Iniciando incremento de cota (${count}) para:`, userId);
     try {
-        const { error } = await supabase.rpc('increment_searches', {
-            user_id: userId
+        // 1. Tenta via RPC (Ideal: a função RPC deve ser atualizada para aceitar count)
+        const { error: rpcError } = await supabase.rpc('increment_searches', {
+            user_id: userId,
+            amount: count // Passando amount para o RPC caso ele seja atualizado
         });
 
-        // Se a função RPC não existir, fazer update manual
-        if (error && error.message.includes('function')) {
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .update({
-                    searches_used: supabase.raw('searches_used + 1')
-                })
-                .eq('id', userId);
-
-            if (updateError) throw updateError;
-        } else if (error) {
-            throw error;
+        if (!rpcError) {
+            console.log(`✅ Incremento via RPC (${count}) concluído`);
+            return { success: true };
         }
 
+        console.warn('⚠️ RPC falhou ou não suporta parâmetros, tentando fallback manual...');
+
+        // 2. Fallback: busca atual e incrementa
+        const { data: profile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('searches_used')
+            .eq('id', userId)
+            .single();
+
+        if (fetchError) {
+            console.error('❌ Erro ao buscar perfil para incremento:', fetchError);
+            throw fetchError;
+        }
+
+        const currentUsed = profile.searches_used || 0;
+        const newUsed = currentUsed + count;
+        console.log(`📊 Valor atual de searches_used: ${currentUsed}. Incrementando +${count} para ${newUsed}...`);
+
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+                searches_used: newUsed,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', userId);
+
+        if (updateError) {
+            console.error('❌ Erro no update manual de cota:', updateError);
+            throw updateError;
+        }
+
+        console.log(`✅ Incremento manual (${count}) concluído com sucesso`);
         return { success: true };
     } catch (error) {
-        console.error('Error incrementing search count:', error);
+        console.error('❌ Falha crítica no incremento de cota:', error);
         return { success: false, error: error.message };
     }
 }
