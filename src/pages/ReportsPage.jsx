@@ -21,7 +21,7 @@ export default function ReportsPage() {
                 </h1>
 
                 <p className="text-xl text-gray-400 max-w-lg mx-auto leading-relaxed mb-10">
-                    Nossa equipe de engenharia está preparando relatórios avançados e insights estratégicos para o seu negócio.
+                    Nossa equipe de desenvolvimento está preparando relatórios avançados para o seu negócio.
                 </p>
 
                 <div className="flex items-center gap-4 p-1 px-4 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
