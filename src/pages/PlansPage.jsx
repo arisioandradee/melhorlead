@@ -28,7 +28,7 @@ const PLANS = [
         id: 'free',
         name: 'Free',
         description: 'Para pequenos negócios que estão começando sua prospecção.',
-        price: 'R$ 0',
+        price: 'R$ xx/mês',
         limit: '100',
         features: [
             '100 CNPJs por mês',
@@ -48,7 +48,7 @@ const PLANS = [
         displayName: 'Pro',
         name: 'Pro',
         description: 'Potência máxima para escalas industriais de prospecção.',
-        price: 'Consultech',
+        price: 'R$ xx/mês',
         limit: '100.000',
         features: [
             '100.000 CNPJs por mês',
@@ -129,14 +129,6 @@ export default function PlansPage() {
                                     <div className={`w-14 h-14 rounded-2xl ${plan.bgColor} border ${plan.borderColor} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
                                         <Icon className={`h-8 w-8 ${plan.color}`} />
                                     </div>
-                                    <CardTitle className="text-3xl font-bold flex items-center gap-3">
-                                        {planDisplayName}
-                                        {isCurrent && (
-                                            <Badge variant="secondary" className="bg-white/10 text-white border-white/20">
-                                                Atual
-                                            </Badge>
-                                        )}
-                                    </CardTitle>
                                     <div className="mt-4 flex items-baseline gap-1">
                                         <span className="text-4xl font-extrabold">{plan.price}</span>
                                         {plan.price !== 'Consultech' && plan.price !== 'Grátis' && <span className="text-gray-400">/mês</span>}
