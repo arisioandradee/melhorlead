@@ -30,7 +30,7 @@ import {
 import { MultiSelect } from '@/components/ui/multi-select';
 import { ESTADOS_BR, SITUACAO_CADASTRAL, NATUREZA_JURIDICA, CNAES_COMUNS, REGIOES_BR } from '@/utils/constants';
 import { maskCEP, maskDDD, parseCurrency } from '@/utils/formatters';
-import { formatSearchPayload, searchCompanies } from '@/services/api';
+import { formatSearchPayload, searchCompanies, searchCompaniesWithPagination } from '@/services/api';
 import { SmartCNAESearch } from '@/components/SmartCNAESearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { saveSearch } from '@/services/historyService';
@@ -62,11 +62,14 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         somenteFixo: false,
         somenteCelular: false,
         comEmail: false,
+        totalDesired: 1000,
+        fetchAll: false,
     });
 
     const [selectedRegions, setSelectedRegions] = useState([]); // Changed to array
 
     const [loading, setLoading] = useState(false);
+    const [fetchProgress, setFetchProgress] = useState(null);
     const [error, setError] = useState('');
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
     const [success, setSuccess] = useState(false); // Added success state
@@ -120,10 +123,20 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         handleInputChange('uf', newUFs);
     };
 
+    const handleProgressUpdate = (currentPage, totalPages, fetchedCount) => {
+        setFetchProgress({
+            currentPage,
+            totalPages,
+            fetchedCount,
+            percentage: Math.round((currentPage / totalPages) * 100)
+        });
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setLoading(true);
+        setFetchProgress(null);
         console.log('🚀 Search started! FormData:', formData);
         onSearchStart?.();
 
@@ -132,11 +145,24 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         try {
             const payload = formatSearchPayload({
                 ...formData,
+                limite: formData.totalDesired, // Usar totalDesired como base para o limite
                 capitalSocialMin: parseCurrency(formData.capitalSocialMin),
                 capitalSocialMax: parseCurrency(formData.capitalSocialMax),
             });
 
-            const result = await searchCompanies(payload);
+            let result;
+            if (formData.totalDesired > 1000 || formData.fetchAll) {
+                // Usar paginação
+                result = await searchCompaniesWithPagination(
+                    payload,
+                    formData.fetchAll ? 200000 : formData.totalDesired,
+                    handleProgressUpdate
+                );
+            } else {
+                // Busca normal
+                result = await searchCompanies(payload);
+            }
+
             console.log('📥 API Result:', result);
 
             if (result.success) {
@@ -168,7 +194,10 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
                 // Show success state on button
                 setSuccess(true);
-                setTimeout(() => setSuccess(false), 3000);
+                setTimeout(() => {
+                    setSuccess(false);
+                    setFetchProgress(null);
+                }, 3000);
 
                 // Save to history (quota increment DISABLED)
                 if (user) {
@@ -205,7 +234,8 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
             dataAberturaFim: '',
             capitalSocialMin: '',
             capitalSocialMax: '',
-            limite: 50,
+            totalDesired: 1000,
+            fetchAll: false,
             somenteMEI: false,
             excluirMEI: false,
             somenteMatriz: false,
@@ -217,6 +247,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         });
         setSelectedRegions([]);
         setError('');
+        setFetchProgress(null);
         onSearchResults([], null);
     };
 
@@ -521,18 +552,32 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <Label htmlFor="limite" className="text-base font-semibold flex items-center gap-2 text-white/90">
-                                        <Filter className="h-4 w-4 text-primary" />
-                                        Máximo de Resultados
+                                    <Label className="text-base font-semibold flex items-center justify-between text-white/90">
+                                        <div className="flex items-center gap-2">
+                                            <Filter className="h-4 w-4 text-primary" />
+                                            Quantidade de Resultados
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                id="fetchAll"
+                                                checked={formData.fetchAll}
+                                                onCheckedChange={(checked) => {
+                                                    handleInputChange('fetchAll', checked);
+                                                    if (checked) handleInputChange('totalDesired', 200000);
+                                                }}
+                                            />
+                                            <span className="text-xs font-normal text-muted-foreground">Buscar TODOS</span>
+                                        </div>
                                     </Label>
                                     <Input
-                                        id="limite"
+                                        id="totalDesired"
                                         type="number"
                                         min="1"
-                                        max="100000"
-                                        value={formData.limite}
-                                        onChange={(e) => handleInputChange('limite', parseInt(e.target.value))}
-                                        className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
+                                        max="200000"
+                                        value={formData.totalDesired}
+                                        onChange={(e) => handleInputChange('totalDesired', parseInt(e.target.value) || 0)}
+                                        disabled={formData.fetchAll}
+                                        className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all disabled:opacity-50"
                                     />
                                 </div>
                             </div>
@@ -719,6 +764,25 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                         </TabsContent>
                     </Tabs>
 
+
+                    {/* Progress Display */}
+                    {fetchProgress && (
+                        <div className="mt-6 p-4 rounded-xl bg-primary/10 border border-primary/20 animate-fade-in space-y-3">
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-primary">Buscando página {fetchProgress.currentPage} de {fetchProgress.totalPages}</span>
+                                <span className="text-muted-foreground">{fetchProgress.percentage}%</span>
+                            </div>
+                            <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                                <div
+                                    className="bg-primary h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(var(--primary),0.5)]"
+                                    style={{ width: `${fetchProgress.percentage}%` }}
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground text-center">
+                                {fetchProgress.fetchedCount.toLocaleString()} empresas carregadas até agora...
+                            </p>
+                        </div>
+                    )}
 
                     {/* Error Display */}
                     {error && (

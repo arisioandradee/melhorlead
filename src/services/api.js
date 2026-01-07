@@ -160,10 +160,84 @@ export const formatSearchPayload = (formData) => {
         payload.mei = mei;
     }
 
-    // Limite de resultados
-    payload.limite = formData.limite || 50;
+    // Limite de resultados (API aceita no máximo 1000)
+    payload.limite = Math.min(formData.limite || 50, 1000);
+
+    // Paginação
+    if (formData.pagina) {
+        payload.pagina = formData.pagina;
+    }
 
     return payload;
+};
+
+/**
+ * Busca empresas com paginação automática para superar o limite de 1000 resultados.
+ * Otimizado para consumir o mínimo de créditos possível.
+ * 
+ * @param {Object} searchData - Payload formatado da busca
+ * @param {number} totalDesired - Quantidade total de resultados desejada
+ * @param {Function} onProgress - Callback para atualizar progresso (currentPage, totalPages, fetchedCount)
+ */
+export const searchCompaniesWithPagination = async (searchData, totalDesired, onProgress) => {
+    // 1. Primeira requisição rápida para descobrir o total disponível (limite 1 economiza tempo/dados)
+    const probeResponse = await searchCompanies({
+        ...searchData,
+        limite: 1,
+        pagina: 1
+    });
+
+    if (!probeResponse.success) return probeResponse;
+
+    const totalAvailable = probeResponse.data?.total || 0;
+    const finalTotalToFetch = Math.min(totalDesired, totalAvailable);
+
+    if (finalTotalToFetch <= 0) {
+        return { success: true, data: { total: totalAvailable, cnpjs: [] } };
+    }
+
+    // 2. Cálculo de eficiência (EX: 1200 resultados -> 2 páginas de 600 cada = 1200 créditos consumidos)
+    const numPages = Math.ceil(finalTotalToFetch / 1000);
+    const resultsPerPage = Math.ceil(finalTotalToFetch / numPages);
+
+    const allCompanies = [];
+    console.log(`📊 Otimização: Buscando ${finalTotalToFetch} empresas em ${numPages} páginas de ${resultsPerPage} cada.`);
+
+    // 3. Loop de busca
+    for (let currentPagina = 1; currentPagina <= numPages; currentPagina++) {
+        // Na última página, pode ser que precisemos de menos para bater o total exato
+        const remaining = finalTotalToFetch - allCompanies.length;
+        const currentLimite = Math.min(resultsPerPage, remaining);
+
+        if (currentLimite <= 0) break;
+
+        const result = await searchCompanies({
+            ...searchData,
+            limite: currentLimite,
+            pagina: currentPagina
+        });
+
+        if (result.success) {
+            const pageCNPJs = result.data?.cnpjs || [];
+            allCompanies.push(...pageCNPJs);
+            onProgress?.(currentPagina, numPages, allCompanies.length);
+
+            if (allCompanies.length >= finalTotalToFetch) break;
+        } else {
+            console.warn(`⚠️ Erro ao buscar página ${currentPagina}:`, result.error);
+            // Se falhou a primeira página, retorna o erro. Se falhou no meio, retorna o que tem.
+            if (allCompanies.length === 0) return result;
+            break;
+        }
+    }
+
+    return {
+        success: true,
+        data: {
+            total: totalAvailable,
+            cnpjs: allCompanies.slice(0, finalTotalToFetch)
+        }
+    };
 };
 
 // Busca empresas na API (usando tipo_resultado=completo para obter TODOS os dados)
