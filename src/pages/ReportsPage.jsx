@@ -1,116 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { Header } from '../components/Header';
-import { reportService } from '../services/reportService';
-import { useAuth } from '../contexts/AuthContext';
+import React from 'react';
+import { Construction, Sparkles } from 'lucide-react';
 
 export default function ReportsPage() {
-    const { user } = useAuth();
-    const [reports, setReports] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    const loadReports = async () => {
-        if (!user) return;
-        const result = await reportService.listReports(user.id);
-        if (result.success) {
-            setReports(result.reports);
-        }
-        setLoading(false);
-    };
-
-    useEffect(() => {
-        loadReports();
-        const interval = setInterval(loadReports, 5000); // Poll a cada 5s
-        return () => clearInterval(interval);
-    }, [user]);
-
-    const handleDownload = async (report) => {
-        const result = await reportService.downloadReport(report.id, report.nome);
-        if (!result.success) {
-            alert(`Erro: ${result.error}`);
-        }
-    };
-
-    const handleDelete = async (reportId) => {
-        if (!confirm('Deletar este relatório?')) return;
-        const result = await reportService.deleteReport(reportId);
-        if (result.success) {
-            setReports(prev => prev.filter(r => r.id !== reportId));
-        }
-    };
-
-    if (loading) {
-        return (
-            <>
-                <Header />
-                <main className="p-6">
-                    <p className="text-center text-gray-600">Carregando...</p>
-                </main>
-            </>
-        );
-    }
-
     return (
-        <>
-            <Header />
-            <main className="p-6 space-y-6">
-                <div>
-                    <h1 className="text-3xl font-bold">Relatórios</h1>
-                    <p className="text-gray-600">Gerencie seus relatórios exportados</p>
+        <div className="min-h-screen bg-[#0a0a0a] flex flex-col relative overflow-hidden">
+            {/* Background Glow */}
+            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary/10 blur-[120px] rounded-full" />
+
+            <main className="flex-1 flex flex-col items-center justify-center p-6 text-center z-10">
+                <div className="relative group mb-8">
+                    <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full scale-110 group-hover:scale-125 transition-transform duration-500" />
+                    <div className="w-32 h-32 bg-gradient-to-br from-primary/20 to-secondary/20 rounded-3xl border border-white/10 flex items-center justify-center relative backdrop-blur-xl animate-float">
+                        <Construction className="h-16 w-16 text-primary" />
+                        <Sparkles className="absolute -top-2 -right-2 h-6 w-6 text-yellow-500 animate-pulse" />
+                    </div>
                 </div>
 
-                {reports.length === 0 ? (
-                    <div className="text-center py-16 border-2 border-dashed rounded-lg">
-                        <p className="text-gray-600">Nenhum relatório ainda</p>
-                        <p className="text-sm text-gray-500">Faça uma busca e clique em "Gerar Relatório"</p>
+                <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 tracking-tight bg-gradient-to-r from-white via-white to-white/40 bg-clip-text text-transparent">
+                    Em Construção
+                </h1>
+
+                <p className="text-xl text-gray-400 max-w-lg mx-auto leading-relaxed mb-10">
+                    Nossa equipe de engenharia está preparando relatórios avançados e insights estratégicos para o seu negócio.
+                </p>
+
+                <div className="flex items-center gap-4 p-1 px-4 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+                    <div className="flex gap-2">
+                        <div className="h-2 w-2 rounded-full bg-primary animate-bounce shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
+                        <div className="h-2 w-2 rounded-full bg-primary animate-bounce [animation-delay:0.2s] shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
+                        <div className="h-2 w-2 rounded-full bg-primary animate-bounce [animation-delay:0.4s] shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
                     </div>
-                ) : (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {reports.map((report) => (
-                            <div key={report.id} className="border rounded-lg p-4 hover:shadow-lg transition">
-                                <div className="flex items-start justify-between mb-3">
-                                    <h3 className="font-semibold">{report.nome}</h3>
-                                    <span className={`px-2 py-1 text-xs rounded ${report.status === 'concluido' ? 'bg-green-100 text-green-800' :
-                                            report.status === 'processando' ? 'bg-yellow-100 text-yellow-800' :
-                                                'bg-red-100 text-red-800'
-                                        }`}>
-                                        {report.status === 'concluido' ? '✅ Concluído' :
-                                            report.status === 'processando' ? '⏳ Processando' :
-                                                '❌ Erro'}
-                                    </span>
-                                </div>
-
-                                <p className="text-sm text-gray-600 mb-3">
-                                    {reportService.formatRelativeTime(report.created_at)}
-                                </p>
-
-                                {report.status === 'concluido' && (
-                                    <p className="text-sm text-gray-600 mb-3">
-                                        {report.total_registros || 0} registros
-                                    </p>
-                                )}
-
-                                <div className="flex gap-2">
-                                    {report.status === 'concluido' && (
-                                        <button
-                                            onClick={() => handleDownload(report)}
-                                            className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                                        >
-                                            ⬇️ Download
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={() => handleDelete(report.id)}
-                                        disabled={report.status === 'processando'}
-                                        className="px-3 py-2 border rounded hover:bg-gray-50 text-sm disabled:opacity-50"
-                                    >
-                                        🗑️
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                    <span className="text-sm font-medium text-primary/80 uppercase tracking-widest">Processando Módulos</span>
+                </div>
             </main>
-        </>
+        </div>
     );
 }

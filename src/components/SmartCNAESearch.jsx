@@ -8,7 +8,7 @@ import { findCNAEsByAI, isAIConfigured } from '@/services/aiService';
 import { fetchOfficialCNAEs, getCacheInfo } from '@/services/cnaeOfficial';
 import { CNAES_COMUNS } from '@/utils/constants';
 
-export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
+export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [], hideSelected = false, inputHeight = "h-12" }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [suggestions, setSuggestions] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -149,31 +149,26 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
     };
 
     return (
-        <div className="space-y-4">
-            {/* Search Input */}
-            <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-base text-foreground">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    Busca Inteligente de Atividades (IA)
-                </Label>
-                <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-secondary/20 to-primary/20 rounded-lg blur-sm group-hover:blur opacity-50 transition-all duration-500" />
-                    <Input
-                        type="text"
-                        placeholder='Ex: "dentista", "padaria", "desenvolvimento de software"...'
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="relative h-14 pl-4 pr-12 bg-black/40 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all"
-                    />
+        <div className="space-y-3">
+            <Label className="text-base font-semibold flex items-center gap-2 text-white/90">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Busca Inteligente de Atividades (IA)
+            </Label>
+            <div className="relative group">
+                <Input
+                    type="text"
+                    placeholder='Ex: "dentista", "padaria", "desenvolvimento de software"...'
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className={`relative ${inputHeight} pl-4 pr-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all`}
+                />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2">
                     {loading ? (
-                        <Loader2 className="absolute right-4 top-4 h-6 w-6 animate-spin text-primary" />
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
                     ) : (
-                        <Sparkles className="absolute right-4 top-4 h-6 w-6 text-primary/50 group-hover:text-primary transition-colors" />
+                        <Sparkles className="h-5 w-5 text-primary/50 group-hover:text-primary transition-colors" />
                     )}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                    Digite uma descrição da atividade e a IA encontrará os CNAEs mais relevantes
-                </p>
             </div>
 
             {/* Error */}
@@ -203,7 +198,6 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
 
                     <div className="space-y-2">
                         {suggestions.map((suggestion, index) => {
-                            const cnae = cnaeList.find(c => c.value === suggestion.code);
                             const isSelected = selected.has(suggestion.code);
                             const isTopResult = index < 2;
                             const hasSemanticBoost = suggestion.isSuggested || suggestion.hasSemanticMatch;
@@ -228,21 +222,18 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
                                                     {suggestion.code}
                                                 </span>
 
-                                                {/* Badge: Top Result */}
                                                 {isTopResult && (
                                                     <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 text-xs px-1.5 py-0.5">
                                                         ⭐ Top {index + 1}
                                                     </Badge>
                                                 )}
 
-                                                {/* Badge: Semantic Match */}
                                                 {hasSemanticBoost && (
                                                     <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs px-1.5 py-0.5">
                                                         🎯 Match
                                                     </Badge>
                                                 )}
 
-                                                {/* Badge: High Confidence */}
                                                 {suggestion.confidence >= 0.9 && (
                                                     <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 text-xs px-1.5 py-0.5">
                                                         ✓ {Math.round(suggestion.confidence * 100)}%
@@ -281,11 +272,8 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
             )}
 
             {/* Selected CNAEs Display */}
-            {selected.size > 0 && (
-                <Card className="p-4">
-                    <h4 className="font-semibold mb-3 text-slate-900">
-                        CNAEs Selecionados ({selected.size})
-                    </h4>
+            {selected.size > 0 && !hideSelected && (
+                <Card className="p-3 bg-black/20 border-white/5">
                     <div className="flex flex-wrap gap-2">
                         {Array.from(selected).map(code => {
                             const cnae = cnaeList.find(c => c.value === code);
@@ -293,11 +281,11 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
                                 <Badge
                                     key={code}
                                     variant="default"
-                                    className="bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer border border-primary/20"
+                                    className="bg-primary/80 hover:bg-primary text-white border-none text-[10px] py-0 px-2 h-6"
                                     onClick={() => toggleCNAE(code, cnae?.label, 0, cnae)}
                                 >
                                     {code}
-                                    <span className="ml-1">×</span>
+                                    <span className="ml-1 opacity-60">×</span>
                                 </Badge>
                             );
                         })}
@@ -307,3 +295,4 @@ export function SmartCNAESearch({ onCNAEsSelected, selectedCNAEs = [] }) {
         </div>
     );
 }
+

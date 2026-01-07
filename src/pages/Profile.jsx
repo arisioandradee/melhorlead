@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import {
 
 export default function Profile() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -165,7 +167,7 @@ export default function Profile() {
                                     Plano: {profile?.plan?.toUpperCase() || 'FREE'}
                                 </div>
                                 <div className="px-3 py-1 rounded-full bg-secondary/10 border border-secondary/30 text-secondary text-sm font-medium">
-                                    {profile?.searches_used || 0}/{profile?.search_quota || 10} buscas
+                                    Saldo: {(profile?.search_quota || 0) - (profile?.searches_used || 0)} CNPJs
                                 </div>
                             </div>
                         </div>
@@ -206,7 +208,7 @@ export default function Profile() {
 
             {/* Tabs */}
             <Tabs defaultValue="dados" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:grid-cols-3">
+                <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="dados" className="gap-2">
                         <User className="h-4 w-4" />
                         Dados Pessoais
@@ -214,10 +216,6 @@ export default function Profile() {
                     <TabsTrigger value="seguranca" className="gap-2">
                         <Lock className="h-4 w-4" />
                         Segurança
-                    </TabsTrigger>
-                    <TabsTrigger value="plano" className="gap-2">
-                        <TrendingUp className="h-4 w-4" />
-                        Plano
                     </TabsTrigger>
                 </TabsList>
 
@@ -365,52 +363,7 @@ export default function Profile() {
                     </Card>
                 </TabsContent>
 
-                {/* Tab: Plano */}
-                <TabsContent value="plano">
-                    <Card className="glass border-border/50">
-                        <CardHeader>
-                            <CardTitle>Plano Atual: {profile?.plan?.toUpperCase() || 'FREE'}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="p-4 rounded-lg glass border border-border/50">
-                                    <h3 className="font-semibold mb-2">Quota Mensal</h3>
-                                    <p className="text-2xl font-bold text-primary">
-                                        {profile?.search_quota || 10}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">buscas por mês</p>
-                                </div>
 
-                                <div className="p-4 rounded-lg glass border border-border/50">
-                                    <h3 className="font-semibold mb-2">Utilizadas</h3>
-                                    <p className="text-2xl font-bold text-secondary">
-                                        {profile?.searches_used || 0}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">este mês</p>
-                                </div>
-
-                                <div className="p-4 rounded-lg glass border border-border/50">
-                                    <h3 className="font-semibold mb-2">Disponíveis</h3>
-                                    <p className="text-2xl font-bold text-accent">
-                                        {(profile?.search_quota || 10) - (profile?.searches_used || 0)}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">restantes</p>
-                                </div>
-                            </div>
-
-                            <div className="p-6 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
-                                <h3 className="text-lg font-semibold mb-2">Upgrade para Pro</h3>
-                                <p className="text-muted-foreground mb-4">
-                                    Desbloqueie recursos premium e aumente seu limite de buscas!
-                                </p>
-                                <Button className="gap-2">
-                                    <TrendingUp className="h-4 w-4" />
-                                    Ver Planos
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
             </Tabs>
         </div>
     );

@@ -8,14 +8,18 @@ import { Register } from './pages/Register';
 import Profile from './pages/Profile';
 import SearchHistory from './pages/SearchHistory';
 import ReportsPage from './pages/ReportsPage';
+import PlansPage from './pages/PlansPage';
 import './index.css';
+
+import { Toaster } from 'sonner';
 
 // Layout with Sidebar
 function AppLayout({ children }) {
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-background flex">
+            <Toaster position="top-right" richColors closeButton />
             <Sidebar />
-            <div className="pl-64">
+            <div className="flex-1 pl-64 overflow-x-hidden">
                 {children}
             </div>
         </div>
@@ -70,6 +74,17 @@ function App() {
                         <ProtectedRoute>
                             <AppLayout>
                                 <ReportsPage />
+                            </AppLayout>
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/planos"
+                    element={
+                        <ProtectedRoute>
+                            <AppLayout>
+                                <PlansPage />
                             </AppLayout>
                         </ProtectedRoute>
                     }

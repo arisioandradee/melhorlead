@@ -10,7 +10,8 @@ import {
     User,
     LogOut,
     ChevronRight,
-    FileSpreadsheet
+    FileSpreadsheet,
+    CreditCard
 } from 'lucide-react';
 import Logo from '@/assets/logoDibai.png';
 
@@ -32,8 +33,13 @@ export function Sidebar() {
         {
             to: '/',
             icon: Search,
-            label: 'Busca Avançada',
+            label: 'Buscar Leads',
             exact: true
+        },
+        {
+            to: '/history',
+            icon: History,
+            label: 'Histórico'
         },
         {
             to: '/relatorios',
@@ -41,9 +47,9 @@ export function Sidebar() {
             label: 'Relatórios'
         },
         {
-            to: '/history',
-            icon: History,
-            label: 'Histórico'
+            to: '/planos',
+            icon: CreditCard,
+            label: 'Planos'
         }
     ];
 

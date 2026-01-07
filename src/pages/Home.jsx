@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Header } from '@/components/Header';
 import { StatsCards } from '@/components/StatsCards';
 import { CompanySearchForm } from '@/components/CompanySearchForm';
 import { ResultsGrid } from '@/components/ResultsGrid';
@@ -60,10 +59,8 @@ export default function Home() {
     const paginatedResults = results.slice(startIndex, endIndex);
 
     return (
-        <>
-            <Header resultsCount={results.length} />
-
-            <main className="p-6 space-y-6">
+        <div className="flex flex-col min-h-screen">
+            <main className="p-6 space-y-6 animate-fade-in">
                 {results.length > 0 && (
                     <StatsCards totalResults={results.length} searchTime={searchTime} />
                 )}
@@ -143,6 +140,6 @@ export default function Home() {
                     onToggleSelection={toggleSelection}
                 />
             </main>
-        </>
+        </div>
     );
 }

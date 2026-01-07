@@ -12,12 +12,17 @@ import {
     TrendingUp,
     Sparkles,
     Loader2,
-    CheckCircle2
+    CheckCircle2,
+    Wallet,
+    Info,
+    AlertCircle
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -168,7 +173,15 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
         try {
             const quota = await checkAndResetQuota(user.id);
             if (!quota.allowed || quota.remaining <= 0) {
-                setError(`Seu saldo de CNPJs acabou (${quota.total - quota.remaining}/${quota.total}). Seu plano é: ${user.plan || 'Demo'}.`);
+                const isDemo = (user.plan || 'Demo').toLowerCase() === 'demo';
+                const msg = isDemo
+                    ? `Seu saldo inicial de 10 CNPJs acabou. Fale com o suporte para liberar mais créditos!`
+                    : `Seu saldo de CNPJs acabou (${quota.total}/${quota.total} usados). Entre em contato para renovar seu plano ${user.plan}.`;
+
+                toast.error('Saldo Insuficiente', {
+                    description: msg,
+                    duration: 6000,
+                });
                 setLoading(false);
                 return;
             }
@@ -179,8 +192,11 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
             if (requestedAmount > quota.remaining) {
                 console.warn(`⚠️ Busca limitada pelo saldo disponível: ${quota.remaining} CNPJs`);
                 requestedAmount = quota.remaining;
-                // Opcional: Avisar usuário que a busca foi limitada
-                setError(`Sua busca foi limitada aos ${quota.remaining} CNPJs disponíveis no seu saldo.`);
+
+                toast.warning('Saldo Limitado', {
+                    description: `Sua busca foi limitada aos ${quota.remaining} CNPJs disponíveis.`,
+                    duration: 4000
+                });
             }
 
             console.log('📊 Quota Check:', quota, 'Requested:', requestedAmount);
@@ -236,6 +252,9 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
                 // Show success state on button
                 setSuccess(true);
+                toast.success('Busca Concluída', {
+                    description: `Encontramos ${companies.length} empresas para você.`,
+                });
 
                 // Save to history and increment quota
                 if (user) {
@@ -254,11 +273,15 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                 }, 3000);
             } else {
                 console.error('❌ Search failed:', result.error);
-                setError(result.error);
+                toast.error('Erro na Busca', {
+                    description: result.error,
+                });
                 onSearchResults([], null);
             }
         } catch (err) {
-            setError('Erro inesperado ao buscar empresas');
+            toast.error('Erro Inesperado', {
+                description: 'Ocorreu um erro ao processar sua busca.',
+            });
             console.error('❌ Unexpected error:', err);
             onSearchResults([], null);
         } finally {
@@ -294,7 +317,6 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
             comEmail: false,
         });
         setSelectedRegions([]);
-        setError('');
         setFetchProgress(null);
         onSearchResults([], null);
     };
@@ -310,19 +332,28 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                 <Search className="h-6 w-6 text-primary" />
                             </div>
                             <div className="flex-1">
-                                <CardTitle className="text-xl font-semibold text-foreground mb-1">
-                                    Busca Avançada
+                                <CardTitle className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                                    Buscar Leads
                                 </CardTitle>
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                                        <Info className="h-3.5 w-3.5 text-primary/50" />
                                         Filtre empresas por múltiplos critérios
                                     </p>
                                     {userQuota && (
-                                        <div className="flex items-center gap-2 bg-primary/5 px-2 py-0.5 rounded-full border border-primary/10">
-                                            <div className={`h-1.5 w-1.5 rounded-full ${userQuota.remaining > 0 ? 'bg-emerald-500' : 'bg-destructive'}`} />
-                                            <span className="text-[10px] font-medium text-primary">
-                                                Saldo: {userQuota.remaining} CNPJs
-                                            </span>
+                                        <div className="flex items-center gap-2.5 bg-background/50 backdrop-blur-md px-3 py-1 rounded-lg border border-primary/20 shadow-sm animate-fade-in">
+                                            <Wallet className="h-4 w-4 text-primary" />
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold leading-none mb-0.5">
+                                                    Saldo Disponível
+                                                </span>
+                                                <div className="flex items-center gap-1.5 leading-none">
+                                                    <div className={`h-1.5 w-1.5 rounded-full ${userQuota.remaining > 0 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} />
+                                                    <span className="text-sm font-bold text-foreground">
+                                                        {userQuota.remaining.toLocaleString()} CNPJs
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -398,14 +429,68 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
 
                         {/* Tab 1: Básico */}
                         <TabsContent value="basico" className="space-y-6 overflow-visible">
-                            {/* Search AI Section */}
-                            <div className="space-y-4">
-                                <SmartCNAESearch
-                                    onCNAEsSelected={(cnaes) => {
-                                        handleInputChange('cnae', cnaes);
-                                    }}
-                                    selectedCNAEs={Array.isArray(formData.cnae) ? formData.cnae : (formData.cnae ? [formData.cnae] : [])}
-                                />
+                            {/* Search AI Section + Quantidade */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                                <div className="space-y-3">
+                                    <SmartCNAESearch
+                                        onCNAEsSelected={(cnaes) => {
+                                            handleInputChange('cnae', cnaes);
+                                        }}
+                                        selectedCNAEs={Array.isArray(formData.cnae) ? formData.cnae : (formData.cnae ? [formData.cnae] : [])}
+                                        hideSelected={true}
+                                        inputHeight="h-12"
+                                    />
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label htmlFor="totalDesired" className="text-base font-semibold flex items-center gap-2 text-white/90">
+                                        <TrendingUp className="h-4 w-4 text-primary" />
+                                        Qtd. de Resultados
+                                    </Label>
+                                    <div className="relative group">
+                                        <Input
+                                            id="totalDesired"
+                                            type="number"
+                                            min="1"
+                                            max="200000"
+                                            value={formData.totalDesired}
+                                            onChange={(e) => handleInputChange('totalDesired', parseInt(e.target.value) || 0)}
+                                            disabled={formData.fetchAll}
+                                            className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all disabled:opacity-50 font-bold"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Selected CNAEs - Full Width Row */}
+                                {((Array.isArray(formData.cnae) && formData.cnae.length > 0) || (typeof formData.cnae === 'string' && formData.cnae.trim() !== '')) && (
+                                    <div className="md:col-span-2 -mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex flex-wrap gap-2 shadow-lg min-h-[60px] items-center">
+                                            <div className="w-full mb-1 flex items-center gap-2">
+                                                <div className="h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]" />
+                                                <span className="text-[10px] text-primary font-bold uppercase tracking-wider">CNAEs Selecionados</span>
+                                            </div>
+                                            {(Array.isArray(formData.cnae) ? formData.cnae : [formData.cnae]).map((code, idx) => (
+                                                code && (
+                                                    <Badge
+                                                        key={`${code}-${idx}`}
+                                                        variant="default"
+                                                        className="bg-primary hover:bg-primary/90 text-white border-none text-[11px] py-1 px-3 h-7 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                                        onClick={() => {
+                                                            if (Array.isArray(formData.cnae)) {
+                                                                handleInputChange('cnae', formData.cnae.filter(c => c !== code));
+                                                            } else {
+                                                                handleInputChange('cnae', '');
+                                                            }
+                                                        }}
+                                                    >
+                                                        {code}
+                                                        <X className="h-3 w-3 opacity-60" />
+                                                    </Badge>
+                                                )
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Company Name */}
@@ -450,8 +535,8 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                 </div>
                             </div>
 
-                            {/* CNAE Manual + Quantidade */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* CNAE Manual */}
+                            <div className="grid grid-cols-1 gap-6">
                                 <div className="space-y-3">
                                     <Label htmlFor="cnae" className="text-base font-semibold flex items-center gap-2 text-white/90">
                                         <Filter className="h-4 w-4 text-primary" />
@@ -460,7 +545,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                     <Input
                                         id="cnae"
                                         list="cnae-options"
-                                        placeholder="Digite o código CNAE"
+                                        placeholder="Digite o código CNAE (ex: 8630503)"
                                         value={Array.isArray(formData.cnae) ? formData.cnae.join(', ') : formData.cnae}
                                         onChange={(e) => {
                                             const val = e.target.value;
@@ -475,23 +560,6 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                                             </option>
                                         ))}
                                     </datalist>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <Label htmlFor="totalDesired" className="text-base font-semibold flex items-center gap-2 text-white/90">
-                                        <TrendingUp className="h-4 w-4 text-primary" />
-                                        Quantidade de Resultados
-                                    </Label>
-                                    <Input
-                                        id="totalDesired"
-                                        type="number"
-                                        min="1"
-                                        max="200000"
-                                        value={formData.totalDesired}
-                                        onChange={(e) => handleInputChange('totalDesired', parseInt(e.target.value) || 0)}
-                                        disabled={formData.fetchAll}
-                                        className="h-12 bg-black/20 border-white/10 text-white placeholder:text-gray-500 focus:border-primary/50 focus:ring-primary/20 transition-all disabled:opacity-50"
-                                    />
                                 </div>
                             </div>
                         </TabsContent>
@@ -606,7 +674,7 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                         {/* Tab 3: Detalhes */}
                         <TabsContent value="detalhes" className="space-y-6 overflow-visible">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-3">
+                                <div className="space-y-3 md:col-span-2">
                                     <Label htmlFor="situacaoCadastral" className="text-base font-semibold flex items-center gap-2 text-white/90">
                                         <Building2 className="h-4 w-4 text-primary" />
                                         Situação Cadastral
@@ -828,13 +896,6 @@ export function CompanySearchForm({ onSearchResults, onSearchStart }) {
                             <p className="text-xs text-muted-foreground text-center">
                                 {fetchProgress.fetchedCount.toLocaleString()} empresas carregadas até agora...
                             </p>
-                        </div>
-                    )}
-
-                    {/* Error Display */}
-                    {error && (
-                        <div className="mt-6 p-4 rounded-lg bg-destructive/10 border border-destructive/20 animate-fade-in">
-                            <p className="text-sm text-destructive font-medium">{error}</p>
                         </div>
                     )}
                 </CardContent>
