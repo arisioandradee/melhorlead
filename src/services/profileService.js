@@ -92,40 +92,63 @@ export async function checkAndResetQuota(userId) {
     try {
         const { data: profile } = await supabase
             .from('profiles')
-            .select('search_quota, searches_used, quota_reset_date')
+            .select('plan, search_quota, searches_used, quota_reset_date')
             .eq('id', userId)
             .single();
 
         if (!profile) throw new Error('Profile not found');
 
+        // Mapeamento de Planos -> Quotas
+        const PLAN_QUOTAS = {
+            'demo': 10,
+            'free': 100,
+            'interno': 100000
+        };
+
+        const expectedQuota = PLAN_QUOTAS[profile.plan?.toLowerCase()] || 10;
+        let currentQuota = profile.search_quota;
+
+        // Auto-correção: Se a quota no banco estiver errada para o plano atual, corrige
+        if (currentQuota !== expectedQuota) {
+            console.log(`🔧 Corrigindo quota para o plano ${profile.plan}: ${currentQuota} -> ${expectedQuota}`);
+            await supabase
+                .from('profiles')
+                .update({ search_quota: expectedQuota })
+                .eq('id', userId);
+            currentQuota = expectedQuota;
+        }
+
         // Verificar se passou da data de reset
-        const resetDate = new Date(profile.quota_reset_date);
+        const resetDate = profile.quota_reset_date ? new Date(profile.quota_reset_date) : null;
         const now = new Date();
 
-        if (now > resetDate) {
-            // Reset quota
+        if (resetDate && now > resetDate) {
+            // Reset searches_used e define próxima data de reset (30 dias)
+            const nextReset = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
             await supabase
                 .from('profiles')
                 .update({
                     searches_used: 0,
-                    quota_reset_date: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+                    quota_reset_date: nextReset
                 })
                 .eq('id', userId);
 
             return {
                 allowed: true,
-                remaining: profile.search_quota,
-                total: profile.search_quota
+                remaining: expectedQuota,
+                total: expectedQuota,
+                plan: profile.plan
             };
         }
 
-        const remaining = profile.search_quota - profile.searches_used;
+        const remaining = currentQuota - (profile.searches_used || 0);
 
         return {
             allowed: remaining > 0,
             remaining: Math.max(0, remaining),
-            total: profile.search_quota,
-            resetDate: profile.quota_reset_date
+            total: currentQuota,
+            resetDate: profile.quota_reset_date,
+            plan: profile.plan
         };
     } catch (error) {
         console.error('Error checking quota:', error);
